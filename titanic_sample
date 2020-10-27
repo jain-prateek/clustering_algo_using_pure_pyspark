@@ -1,0 +1,153 @@
+%spark.pyspark
+############################################################################## Reading csv file with dataset
+rawData = spark.read\
+            .format('csv')\
+            .option('header', 'true')\
+            .load('/user/root/Titanic.csv')
+
+z.show(rawData)
+
+%spark.pyspark
+############################################################################## Selecting the columns which we required
+from pyspark.sql.functions import col
+
+dataset = rawData.select(col('Survived').cast('float'),
+                         col('Pclass').cast('float'),
+                         col('Sex'),
+                         col('Age').cast('float'),
+                         col('Fare').cast('float'),
+                         col('Embarked')
+                        )
+
+print("Dimension of dataset: ", dataset.count(), len(dataset.columns))
+z.show(dataset)
+
+%spark.pyspark
+############################################################################## Dropping rows containing missing values
+dataset = dataset.replace('?', None)\
+        .dropna(how='any')
+        
+print("New dimension of dataset: ", dataset.count(), len(dataset.columns))
+z.show(dataset)
+
+%spark.pyspark
+############################################################################## Define StringIndexers for categorical columns
+from pyspark.ml.feature import StringIndexer
+
+dataset = StringIndexer(
+    inputCol='Sex', 
+    outputCol='Gender', 
+    handleInvalid='keep').fit(dataset).transform(dataset)
+
+dataset = StringIndexer(
+    inputCol='Embarked', 
+    outputCol='Boarded', 
+    handleInvalid='keep').fit(dataset).transform(dataset)
+
+z.show(dataset)
+
+%spark.pyspark
+##############################################################################
+dataset = dataset.drop('Sex')
+dataset = dataset.drop('Embarked')
+
+z.show(dataset)
+
+%spark.pyspark
+
+requiredFeatures = ['Survived','Pclass','Age','Fare','Gender','Boarded']
+print("Features we are selecting are as : ", requiredFeatures)
+
+%spark.pyspark
+################################################################################# Transforming data
+from pyspark.ml.feature import VectorAssembler
+
+assembler = VectorAssembler(inputCols=requiredFeatures, outputCol='features')
+transformed_data = assembler.transform(dataset)
+
+%spark.pyspark
+
+print("Columns after data transformation:")
+transformed_data.columns
+
+%spark.pyspark
+print("Our transformed data is as:")
+z.show(transformed_data)
+
+%spark.pyspark
+#################################################################################Starting clustering model
+from pyspark.ml.clustering import KMeans
+
+kmeans = KMeans(k=5, seed=3)
+model = kmeans.fit(transformed_data)
+
+%spark.pyspark
+###################################################################################Creating the clusters using the model
+clusterdData = model.transform(transformed_data)
+
+z.show(clusterdData)
+
+%spark.pyspark
+###################################################################################Examining all rows in one of the clusters
+z.show(clusterdData.filter(clusterdData.prediction == 1))
+
+%spark.pyspark
+#####################################################################################Evaluating spark clustering performance
+from pyspark.ml.evaluation import ClusteringEvaluator
+
+evaluator = ClusteringEvaluator()
+silhouette = evaluator.evaluate(clusterdData)
+print('Silhouette with squared euclidean distance = ', silhouette)
+
+%spark.pyspark
+####################################################################################View the cluster centers for each of the features
+centers = model.clusterCenters()
+print('Cluster Centers: ')
+for center in centers:
+    print(center)
+    
+%spark.pyspark
+######################################################################################testing models 
+result = {}
+for numbers in range(2,10):
+    evaluator = ClusteringEvaluator()
+    kmeans = KMeans(k=numbers, seed=3)
+    model = kmeans.fit(transformed_data)
+    clusterdData = model.transform(transformed_data)
+    silhouette = evaluator.evaluate(clusterdData)
+    # print(model.comresultputeCost(clusterdData))
+    result[numbers] = silhouette
+    print('Silhouette with squared euclidean distance for cluster size ',numbers,' = ', silhouette)
+    
+%spark.pyspark
+#####################################################################################Finding best cluster size with silhouette score analysis
+# import pyplot and numpy modules
+
+import matplotlib.pyplot as plot
+import numpy as np
+import io
+ 
+
+# Hypothetical equity returns
+
+xData = np.array(list(result.keys()))
+# print(xData)
+yData = np.array(list(result.values()))
+# print(yData)
+# Draw the scatter plot
+plot.plot(xData, yData, marker='o', markersize=5)
+
+plot.title('Hypothetical:No. of Clusters and Silhouette Score')
+
+plot.xlabel('Clusters')
+
+plot.ylabel('Silhouette Score')
+def show(p):
+    img = io.StringIO()
+    p.savefig(img, format='svg')
+    img.seek(0)
+    print("%html <div style='width:600px'>" + img.getvalue() + "</div>")
+
+z.show(plot)
+plot.close()
+
